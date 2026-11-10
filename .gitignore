@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+myenv/
+.venv/
+
+# Environment variables
+.env
+*.env
+
+# Generated data
+data/chroma_db/*
+data/transcripts/*
+
+# Keep empty data directories
+!data/chroma_db/.gitkeep
+!data/transcripts/.gitkeep
+
+# Editors
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

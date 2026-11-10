@@ -1,0 +1,6 @@
+fastapi
+sentence-transformers
+youtube-transcript-api
+uvicorn[standard]
+python-dotenv
+
