@@ -1,0 +1,21 @@
+# ── LangChain Core & Ecosystem ──
+langchain>=0.2
+langchain-core>=0.2
+langchain-community>=0.2
+langchain-text-splitters>=0.2
+langchain-chroma>=0.1
+langchain-google-genai>=1.0
+langchain-huggingface>=0.1
+
+# ── Embeddings & Vector Store ──
+sentence-transformers>=3.0
+chromadb>=0.5
+
+# ── YouTube ──
+youtube-transcript-api>=1.0
+yt-dlp>=2024.1
+
+# ── API & UI ──
+fastapi>=0.110
+uvicorn[standard]>=0.29
+streamlit>=1.35
