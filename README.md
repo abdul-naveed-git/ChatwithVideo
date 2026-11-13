@@ -1,5 +1,8 @@
 # Multilingual YouTube RAG
 ![Project Screenshot](https://github.com/abdul-naveed-git/ChatwithVideo/blob/18f6bb6ccd216bd9fba8c46adccc36beb1852828/images/Screenshot%202026-11-13%20190911.png)
+![Question Answering](https://github.com/abdul-naveed-git/ChatwithVideo/blob/79cce6d3471929b74a84a926b50fa6f4a461fbc8/images/Screenshot%202026-11-13%20192320.png)
+![Timestamp Navigation](https://github.com/abdul-naveed-git/ChatwithVideo/blob/79cce6d3471929b74a84a926b50fa6f4a461fbc8/images/Screenshot%202026-11-13%20192812.png)
+![Multilingual RAG](https://github.com/abdul-naveed-git/ChatwithVideo/blob/79cce6d3471929b74a84a926b50fa6f4a461fbc8/images/Screenshot%202026-11-13%20192933.png)
 
 Ask grounded questions about one or more captioned YouTube lectures. The project fetches YouTube captions, builds timestamp-aware parent passages, retrieves them with multilingual E5 embeddings, and asks Gemini to answer only from those passages. The Streamlit interface supports independent playback and search selection, English or multilingual answers, and timestamp citation buttons.
 
