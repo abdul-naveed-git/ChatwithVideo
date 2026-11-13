@@ -1,4 +1,5 @@
 # Multilingual YouTube RAG
+![Project Screenshot](Screenshot 2026-11-13 190911.png)
 
 Ask grounded questions about one or more captioned YouTube lectures. The project fetches YouTube captions, builds timestamp-aware parent passages, retrieves them with multilingual E5 embeddings, and asks Gemini to answer only from those passages. The Streamlit interface supports independent playback and search selection, English or multilingual answers, and timestamp citation buttons.
 
