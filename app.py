@@ -1,5 +1,6 @@
 """Streamlit frontend for the YouTube multilingual RAG service."""
 from __future__ import annotations
+import os
 import uuid
 from typing import Any
 import streamlit as st
@@ -10,6 +11,13 @@ from ingestion.transcripts import extract_video_id, load_youtube_transcript_docu
 from retrieval.store import add_documents_to_store, video_is_indexed
 
 st.set_page_config(page_title="Lecture RAG", page_icon="▶", layout="wide", initial_sidebar_state="expanded")
+# Streamlit secrets stay server-side. The loader reads the same value from the
+# environment, which also keeps the FastAPI deployment configuration simple.
+if not os.environ.get("SUPADATA_API_KEY"):
+    try:
+        os.environ["SUPADATA_API_KEY"] = st.secrets["SUPADATA_API_KEY"]
+    except Exception:
+        pass
 st.markdown("""<style>
 [data-testid="stAppViewContainer"]{background:#111315;color:#e8e8e8}[data-testid="stSidebar"]{background:#1a1c1f;border-right:1px solid #303237}.block-container{max-width:1040px;padding-top:1.4rem}[data-testid="stChatMessage"]{background:#1b1e22;border:1px solid #30343a;border-radius:14px;padding:.2rem .65rem}[data-testid="stChatMessage"] p{line-height:1.6}.instruction{color:#b8bcc4;margin:0 0 1rem}.source-label{color:#8ab4f8;font-size:.85rem;margin-top:.5rem}div[data-testid="stButton"]>button[kind="primary"]{background:#b3261e;border-color:#d74239}div[data-testid="stButton"]>button{border-radius:9px}
 </style>""", unsafe_allow_html=True)

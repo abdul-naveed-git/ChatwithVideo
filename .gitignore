@@ -23,6 +23,7 @@ MANIFEST
 
 # Virtual environments
 .env
+.streamlit/secrets.toml
 .venv
 env/
 venv/

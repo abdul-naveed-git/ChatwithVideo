@@ -5,6 +5,7 @@ Ask grounded questions about one or more captioned YouTube lectures. The project
 ## Features
 
 - YouTube videos and playlists with available caption tracks; English is preferred by default, with an explicit caption-language option in the API.
+- Optional Supadata transcript retrieval for YouTube videos, which avoids direct YouTube caption-listing IP blocks when `SUPADATA_API_KEY` is configured.
 - `intfloat/multilingual-e5-small` embeddings with the required `passage:` and `query:` prefixes.
 - LangChain `ParentDocumentRetriever`, Chroma child vectors, and persistent `LocalFileStore` parents.
 - Caption-backed parent timestamp ranges and clickable YouTube citations.
@@ -52,9 +53,20 @@ py -3.11 -m venv myenv
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 $env:GOOGLE_API_KEY = "your-google-gemini-api-key"
+$env:SUPADATA_API_KEY = "your-supadata-api-key"  # optional
 ```
 
-`GOOGLE_API_KEY` is the only application environment variable. Set it in the shell that launches Streamlit or Uvicorn. For a persistent user-level value, use `setx GOOGLE_API_KEY "your-google-gemini-api-key"`, then open a new terminal.
+`GOOGLE_API_KEY` is required for answers. `SUPADATA_API_KEY` is optional: when present, ingestion requests Supadata's native transcript endpoint before attempting any direct YouTube caption call. For a persistent user-level value, use `setx SUPADATA_API_KEY "your-supadata-api-key"`, then open a new terminal.
+
+### Streamlit Secrets (recommended for Supadata)
+
+Create `.streamlit/secrets.toml` locally; it is ignored by Git:
+
+```toml
+SUPADATA_API_KEY = "your-supadata-api-key"
+```
+
+The Streamlit server reads this secret only on the server and makes it available to the loader as `SUPADATA_API_KEY`. For FastAPI, set the same environment variable in the shell/service configuration. Never place real keys in source files, logs, or committed configuration.
 
 ## Run
 
@@ -134,7 +146,8 @@ For a live end-to-end retrieval and Gemini generation check:
 ## Troubleshooting
 
 - **No captions available:** choose another lecture, or call `/captions/{video_id}` to inspect tracks. Captions are required.
-- **YouTube connection error:** verify network/proxy/firewall rules for `www.youtube.com`; retry after connectivity is restored.
+- **YouTube connection error:** configure `SUPADATA_API_KEY` to use cloud transcript retrieval, or verify network/proxy/firewall rules for `www.youtube.com` when using the direct fallback.
+- **Supadata credentials, rate limit, or timeout:** confirm `SUPADATA_API_KEY`, wait before retrying a rate/quota error, or check the network connection. Missing native captions are reported separately; unset the key to use the direct YouTube fallback if appropriate.
 - **Gemini authentication or quota error:** set `GOOGLE_API_KEY` in the launching shell and verify the key has Gemini access.
 - **Model download/auth warning:** Hugging Face may emit an authentication warning for public model downloads. It is separate from retrieval behavior; cache access or sign in only if your environment requires it.
 - **No answer or weak answer:** use the collapsed retrieved-passages expander, select the intended lecture(s), and try a focused question. Increase API `k` only after inspecting retrieved passages.

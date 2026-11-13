@@ -6,6 +6,7 @@ No complex runtimes or GPU required.
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -19,6 +20,8 @@ from ingestion.transcripts import (
     _choose_caption_language,
     extract_playlist_id,
     extract_video_id,
+    load_youtube_transcript_documents,
+    SupadataCredentialsError,
 )
 from ingestion.chunking import TimestampedParentSplitter, assemble_transcript_documents, clean_text
 from retrieval.embedder import E5Embeddings
@@ -63,6 +66,55 @@ class TestCaptionLanguageSelection(unittest.TestCase):
             {"language_code": "ta", "is_generated": False},
         ]
         self.assertEqual(_choose_caption_language(available, None), "ta")
+
+
+class TestTranscriptLoaders(unittest.TestCase):
+    def test_supadata_loader_precedes_direct_youtube_and_converts_milliseconds(self):
+        class Response:
+            def read(self):
+                return b'{"title":"Cloud lecture","lang":"te","content":[{"text":"First","offset":1250,"duration":750},{"text":"Second","offset":2000,"duration":500}]}'
+            def __enter__(self): return self
+            def __exit__(self, *args): return None
+
+        with patch.dict("os.environ", {"SUPADATA_API_KEY": "test-key"}, clear=False), \
+             patch("ingestion.transcripts.urlopen", return_value=Response()) as request, \
+             patch("ingestion.transcripts.list_captions") as direct_listing:
+            docs = load_youtube_transcript_documents("https://youtu.be/dQw4w9WgXcQ", "te")
+
+        self.assertEqual([doc.metadata["start"] for doc in docs], [1.25, 2.0])
+        self.assertEqual([doc.metadata["duration"] for doc in docs], [0.75, 0.5])
+        self.assertEqual(docs[0].metadata["title"], "Cloud lecture")
+        self.assertEqual(docs[0].metadata["language"], "te")
+        direct_listing.assert_not_called()
+        request_url = request.call_args.args[0].full_url
+        self.assertIn("mode=native", request_url)
+        self.assertIn("text=false", request_url)
+        self.assertIn("lang=te", request_url)
+        self.assertIn("youtube.com%2Fwatch%3Fv%3DdQw4w9WgXcQ", request_url)
+
+    def test_supadata_invalid_credentials_are_distinct(self):
+        from urllib.error import HTTPError
+        error = HTTPError("https://api.supadata.ai/v1/transcript", 401, "Unauthorized", {}, None)
+        with patch.dict("os.environ", {"SUPADATA_API_KEY": "test-key"}, clear=False), \
+             patch("ingestion.transcripts.urlopen", side_effect=error):
+            with self.assertRaises(SupadataCredentialsError):
+                load_youtube_transcript_documents("dQw4w9WgXcQ")
+
+    def test_direct_loader_is_used_without_supadata_key(self):
+        class Snippet:
+            text = "Direct caption"; start = 3.0; duration = 1.5
+        api = Mock()
+        api.fetch.return_value = [Snippet()]
+        with patch.dict("os.environ", {}, clear=True), \
+             patch("ingestion.transcripts.fetch_video_metadata", return_value=[{"video_id": "dQw4w9WgXcQ", "title": "Direct lecture"}]), \
+             patch("ingestion.transcripts.list_captions", return_value=[{"language_code": "en", "is_generated": False}]), \
+             patch("ingestion.transcripts.YouTubeTranscriptApi", return_value=api), \
+             patch("ingestion.transcripts.urlopen") as supadata_request:
+            docs = load_youtube_transcript_documents("dQw4w9WgXcQ")
+
+        self.assertEqual(docs[0].page_content, "Direct caption")
+        self.assertEqual(docs[0].metadata["start"], 3.0)
+        supadata_request.assert_not_called()
 
 
 class TestLangChainChunking(unittest.TestCase):
