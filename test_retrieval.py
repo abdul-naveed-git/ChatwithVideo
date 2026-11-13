@@ -1,53 +1,47 @@
-#!/usr/bin/env python
-"""
-test_retrieval.py – LangChain test script for ingestion and retrieval.
-
-Usage:
-    python test_retrieval.py <YOUTUBE_URL> [--query "question"]
-"""
 
 from __future__ import annotations
-
-import argparse
-import sys
 from ingestion.transcripts import load_youtube_transcript_documents
-from ingestion.chunking import split_transcript_documents
 from retrieval.store import add_documents_to_store, get_retriever
-from generation.answer import ask_youtube
+from generation.answer import create_rag_chain
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Test LangChain YouTube RAG")
-    parser.add_argument("url", help="YouTube video URL or playlist URL")
-    parser.add_argument("--query", "-q", default="What is this video about?", help="Question")
-    args = parser.parse_args()
-
-    print(f"\n1. Loading transcript documents for: {args.url}")
-    docs = load_youtube_transcript_documents(args.url)
+    url="https://youtu.be/J7j5tCB_y4w?si=ylVmQH0TAf9iOL-m"
+    print(f"\n1. Loading transcript documents for: {url}")
+    docs = load_youtube_transcript_documents(url)
     print(f"   Loaded {len(docs)} transcript segments.")
 
     if not docs:
         print("   No captions found. Exiting.")
-        sys.exit(1)
+        return
 
-    print("\n2. Splitting with LangChain RecursiveCharacterTextSplitter...")
-    chunks = split_transcript_documents(docs)
-    print(f"   Created {len(chunks)} chunks.")
-
-    print("\n3. Storing chunks in Chroma vectorstore (BAAI/bge-m3 embeddings)...")
-    add_documents_to_store(chunks)
+    print("\n2. Assembling captions and storing LangChain parent/child chunks in Chroma...")
+    add_documents_to_store(docs)
     print("   Stored in Chroma successfully.")
 
-    print(f"\n4. Retrieving relevant chunks for query: '{args.query}'")
-    retriever = get_retriever(k=3)
-    results = retriever.invoke(args.query)
+    query="Langchain అంటే ఏమిటి??"
+    print(f"\n3. Retrieving relevant parent passages for query: '{query}'")
+    video_ids = sorted({doc.metadata["video_id"] for doc in docs})
+    retriever = get_retriever(k=5,video_ids=video_ids)
+    results = retriever.invoke(query)
 
     for i, r in enumerate(results, 1):
-        print(f"\n--- Result {i} [{r.metadata.get('title')} @ {r.metadata.get('start', 0):.0f}s] ---")
-        print(r.page_content[:300])
+        start = r.metadata.get("start")
+        parent_id = r.metadata.get("parent_id", "unknown parent key")
+        stamp = f"{float(start):.2f}s" if start is not None else "timestamp unavailable"
+        print(f"\n--- Result {i} [{r.metadata.get('title')} @ {stamp}; parent={parent_id}] ---")
+        print(r.page_content)
 
     print("\n✓ LangChain ingestion and retrieval completed successfully.")
-
+    print("\n4. Generating a grounded Gemini answer from the retrieved parent passages...")
+    rag_chain = create_rag_chain(retriever)
+    answer = rag_chain.invoke({
+        "question": query,
+        "response_language": "English",
+    })
+    print("\n--- Gemini answer ---")
+    print(answer)
+    print("\n✓ LangChain ingestion, retrieval, and Gemini generation completed successfully.")
 
 if __name__ == "__main__":
     main()

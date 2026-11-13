@@ -1,5 +1,5 @@
 """
-LangChain Embeddings factory for BAAI/bge-m3.
+LangChain embeddings factory for multilingual E5.
 No custom classes. Uses standard LangChain HuggingFaceEmbeddings.
 """
 
@@ -15,8 +15,26 @@ logger = logging.getLogger(__name__)
 _cached_embeddings = None
 
 
+class E5Embeddings:
+    """Apply E5's required document/query prefixes around LangChain embeddings."""
+
+    def __init__(self, embeddings: Any) -> None:
+        self.embeddings = embeddings
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return self.embeddings.embed_documents([
+            text if text.startswith("passage: ") else f"passage: {text}"
+            for text in texts
+        ])
+
+    def embed_query(self, text: str) -> list[float]:
+        return self.embeddings.embed_query(
+            text if text.startswith("query: ") else f"query: {text}"
+        )
+
+
 def get_embeddings(model_name: str = EMBEDDING_MODEL_NAME) -> Any:
-    """Return LangChain HuggingFaceEmbeddings instance for BAAI/bge-m3."""
+    """Return a prefix-aware LangChain HuggingFaceEmbeddings instance."""
     global _cached_embeddings
     if _cached_embeddings is not None:
         return _cached_embeddings
@@ -24,22 +42,13 @@ def get_embeddings(model_name: str = EMBEDDING_MODEL_NAME) -> Any:
     try:
         from langchain_huggingface import HuggingFaceEmbeddings
         logger.info("Initializing LangChain HuggingFaceEmbeddings: %s", model_name)
-        _cached_embeddings = HuggingFaceEmbeddings(
+        _cached_embeddings = E5Embeddings(HuggingFaceEmbeddings(
             model_name=model_name,
             encode_kwargs={"normalize_embeddings": True},
-        )
+        ))
         return _cached_embeddings
-    except ImportError:
-        try:
-            from langchain_community.embeddings import HuggingFaceEmbeddings
-            logger.info("Initializing LangChain Community HuggingFaceEmbeddings: %s", model_name)
-            _cached_embeddings = HuggingFaceEmbeddings(
-                model_name=model_name,
-                encode_kwargs={"normalize_embeddings": True},
-            )
-            return _cached_embeddings
-        except ImportError as exc:
-            raise ImportError(
-                "Please install langchain-huggingface or sentence-transformers:\n"
-                "  pip install langchain-huggingface sentence-transformers"
-            ) from exc
+    except ImportError as exc:
+        raise ImportError(
+            "Please install langchain-huggingface and sentence-transformers:\n"
+            "  pip install langchain-huggingface sentence-transformers"
+        ) from exc

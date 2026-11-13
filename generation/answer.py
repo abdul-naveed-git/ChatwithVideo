@@ -14,7 +14,6 @@ try:
     from langchain_core.documents import Document
     from langchain_core.output_parsers import StrOutputParser
     from langchain_core.prompts import ChatPromptTemplate
-    from langchain_core.runnables import RunnablePassthrough
     from langchain_google_genai import ChatGoogleGenerativeAI
 except ImportError:
     class Document:  # type: ignore[no-redef]
@@ -23,11 +22,10 @@ except ImportError:
             self.metadata = metadata or {}
     StrOutputParser = Any  # type: ignore[assignment, misc]
     ChatPromptTemplate = Any  # type: ignore[assignment, misc]
-    RunnablePassthrough = Any  # type: ignore[assignment, misc]
     ChatGoogleGenerativeAI = Any  # type: ignore[assignment, misc]
 
 from config import GEMINI_MODEL_NAME
-from retrieval.store import get_retriever
+from retrieval.store import get_parent_retriever
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +35,9 @@ Rules:
 1. Use ONLY the provided excerpts. Do not use outside knowledge.
 2. Write your entire answer in {response_language}.
 3. If the excerpts do not contain the answer, state clearly in {response_language} that the video(s) do not cover it.
-4. Always cite the video title and timestamp URL provided in each excerpt header.
-5. Keep technical terms, code, and proper nouns in their original form.
+4. Combine relevant sections when the answer spans them.
+5. Always cite the video title and timestamp URL provided in each excerpt header.
+6. Keep technical terms, code, and proper nouns in their original form.
 
 Excerpts:
 {context}
@@ -55,11 +54,15 @@ def format_docs(docs: list[Document]) -> str:
     formatted = []
     for i, doc in enumerate(docs, 1):
         title = doc.metadata.get("title", "Video")
-        start = float(doc.metadata.get("start", 0.0))
+        start = doc.metadata.get("start")
         url = doc.metadata.get("url", "")
-        mins = int(start // 60)
-        secs = int(start % 60)
-        header = f"[Source {i}: {title} @ {mins}:{secs:02d} ({url})]"
+        if start is None:
+            timestamp = "timestamp unavailable"
+        else:
+            mins = int(float(start) // 60)
+            secs = int(float(start) % 60)
+            timestamp = f"{mins}:{secs:02d}"
+        header = f"[Source {i}: {title} @ {timestamp} ({url})]"
         formatted.append(f"{header}\n{doc.page_content}")
 
     return "\n\n".join(formatted)
@@ -115,13 +118,9 @@ def ask_youtube(
     if response_language.lower().startswith("same"):
         response_language = "the same language as the question"
 
-    retriever = get_retriever(video_ids=video_ids, k=k)
-
-    # 1. Retrieve documents directly using retriever.invoke
-    retrieved_docs: list[Document] = retriever.invoke(question)
-
-    # 2. Build and invoke LCEL chain
-    chain = create_rag_chain(retriever=retriever)
+    parent_retriever = get_parent_retriever(video_ids=video_ids, k=k)
+    retrieved_docs = parent_retriever.invoke(question)
+    chain = create_rag_chain(parent_retriever)
     answer = chain.invoke({
         "question": question,
         "response_language": response_language,
@@ -133,7 +132,8 @@ def ask_youtube(
         sources.append({
             "title": d.metadata.get("title", ""),
             "video_id": d.metadata.get("video_id", ""),
-            "start": float(d.metadata.get("start", 0.0)),
+            "start": d.metadata.get("start"),
+            "end": d.metadata.get("end_time"),
             "url": d.metadata.get("url", ""),
             "text": d.page_content,
         })

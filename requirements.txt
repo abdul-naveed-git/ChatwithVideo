@@ -1,7 +1,6 @@
 # ── LangChain Core & Ecosystem ──
-langchain>=0.2
+langchain-classic>=1.0  # ParentDocumentRetriever and LocalFileStore on LangChain 1.x
 langchain-core>=0.2
-langchain-community>=0.2
 langchain-text-splitters>=0.2
 langchain-chroma>=0.1
 langchain-google-genai>=1.0
@@ -13,7 +12,7 @@ chromadb>=0.5
 
 # ── YouTube ──
 youtube-transcript-api>=1.0
-yt-dlp>=2024.1
+yt-dlp>=2025.1
 
 # ── API & UI ──
 fastapi>=0.110

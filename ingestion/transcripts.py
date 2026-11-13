@@ -23,18 +23,14 @@ except ImportError:
 
 try:
     from youtube_transcript_api import YouTubeTranscriptApi
-    from youtube_transcript_api._errors import (
-        NoTranscriptFound,
-        TranscriptsDisabled,
-        VideoUnavailable,
-    )
 except ImportError:
     YouTubeTranscriptApi = None
-    NoTranscriptFound = Exception
-    TranscriptsDisabled = Exception
-    VideoUnavailable = Exception
 
 logger = logging.getLogger(__name__)
+
+# English is the ingestion default.  A caller can still request any caption
+# language returned by ``list_captions`` via ``language_code``.
+DEFAULT_CAPTION_LANGUAGE = "en"
 
 _VIDEO_ID_RE = re.compile(r"(?:v=|youtu\.be/|/embed/|/v/|/shorts/)([a-zA-Z0-9_-]{11})")
 _PLAYLIST_ID_RE = re.compile(r"[?&]list=([a-zA-Z0-9_-]+)")
@@ -109,11 +105,42 @@ def list_captions(video_id: str) -> list[dict[str, Any]]:
         return []
 
 
+def _choose_caption_language(
+    available: list[dict[str, Any]], language_code: str | None,
+) -> str:
+    """Select an explicitly requested caption language, else prefer English."""
+    if language_code:
+        return language_code
+
+    # Prefer a manually supplied English track, then generated English.  Some
+    # videos expose regional English tracks such as ``en-US`` rather than ``en``.
+    english_tracks = [
+        track for track in available
+        if track["language_code"].lower() == DEFAULT_CAPTION_LANGUAGE
+        or track["language_code"].lower().startswith(f"{DEFAULT_CAPTION_LANGUAGE}-")
+    ]
+    if english_tracks:
+        manual_english = next(
+            (track for track in english_tracks if not track["is_generated"]),
+            None,
+        )
+        return (manual_english or english_tracks[0])["language_code"]
+
+    # English is not available, so preserve the previous graceful fallback.
+    manual = next((track for track in available if not track["is_generated"]), None)
+    fallback = (manual or available[0])["language_code"]
+    logger.info(
+        "English captions are unavailable; using available caption language %s",
+        fallback,
+    )
+    return fallback
+
+
 def load_youtube_transcript_documents(
     url_or_video_id: str,
     language_code: str | None = None,
 ) -> list[Document]:
-    """Fetch transcripts and return them directly as LangChain Document objects."""
+    """Fetch captions in English by default, or in ``language_code`` if specified."""
     if YouTubeTranscriptApi is None:
         raise ImportError("Please install youtube-transcript-api: pip install youtube-transcript-api")
 
@@ -131,11 +158,7 @@ def load_youtube_transcript_documents(
                 logger.warning("No captions available for %s", vid)
                 continue
 
-            # Pick requested language or prefer manual captions
-            target_lang = language_code
-            if not target_lang:
-                manual = [a["language_code"] for a in available if not a["is_generated"]]
-                target_lang = manual[0] if manual else available[0]["language_code"]
+            target_lang = _choose_caption_language(available, language_code)
 
             fetched = api.fetch(vid, languages=[target_lang])
 

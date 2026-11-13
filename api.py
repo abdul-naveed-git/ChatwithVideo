@@ -14,13 +14,11 @@ from pydantic import BaseModel, Field
 
 from config import RESPONSE_LANGUAGES
 from generation.answer import ask_youtube
-from ingestion.chunking import split_transcript_documents
 from ingestion.transcripts import (
-    fetch_video_metadata,
     list_captions,
     load_youtube_transcript_documents,
 )
-from retrieval.store import add_documents_to_store, delete_by_video_id, get_vectorstore
+from retrieval.store import add_documents_to_store, delete_by_video_id, video_is_indexed
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,7 +28,7 @@ logger = logging.getLogger("api")
 
 app = FastAPI(
     title="LangChain YouTube Multilingual RAG API",
-    description="FastAPI service powered by LangChain, ChromaDB, BAAI/bge-m3, and Google Gemini.",
+    description="FastAPI service powered by LangChain, ChromaDB, multilingual E5, and Google Gemini.",
     version="2.0.0",
 )
 
@@ -47,7 +45,10 @@ app.add_middleware(
 
 class IngestRequest(BaseModel):
     url: str = Field(description="YouTube video or playlist URL")
-    language_code: str | None = Field(default=None, description="Optional caption language code")
+    language_code: str | None = Field(
+        default=None,
+        description="Caption language code. Defaults to English; use /captions/{video_id} to see other available languages.",
+    )
     reingest: bool = Field(default=False, description="If True, overwrite existing chunks")
 
 
@@ -55,7 +56,7 @@ class ChatRequest(BaseModel):
     question: str = Field(description="Question in any language")
     response_language: str = Field(default="English", description="Target answer language")
     video_ids: list[str] | None = Field(default=None, description="Filter scope to specific video IDs")
-    k: int = Field(default=5, description="Number of retrieved chunks")
+    k: int = Field(default=5, description="Number of child chunks to retrieve")
 
 
 # ── Endpoints ─────────────────────────────────
@@ -66,7 +67,7 @@ def root() -> dict[str, Any]:
         "service": "LangChain YouTube Multilingual RAG API",
         "framework": "LangChain LCEL",
         "vectorstore": "ChromaDB",
-        "embeddings": "BAAI/bge-m3",
+        "embeddings": "intfloat/multilingual-e5-small",
         "llm": "Google Gemini (ChatGoogleGenerativeAI)",
         "endpoints": ["/docs", "/health", "/ingest", "/chat", "/captions/{video_id}"],
     }
@@ -110,23 +111,21 @@ def ingest(req: IngestRequest) -> dict[str, Any]:
                 detail="No captions found or transcript is empty.",
             )
 
-        # 2. Split with LangChain RecursiveCharacterTextSplitter
-        chunks = split_transcript_documents(raw_docs)
-
-        # If reingesting, remove prior chunks first
-        if req.reingest:
-            vids = {doc.metadata.get("video_id") for doc in chunks if doc.metadata.get("video_id")}
-            for vid in vids:
-                delete_by_video_id(vid)
-
-        # 3. Embed & Store into Chroma
-        ids = add_documents_to_store(chunks)
+        # Validate captions before changing an existing index. Normal ingestion
+        # reuses videos already present; reingest deliberately replaces them.
+        video_ids = {doc.metadata.get("video_id") for doc in raw_docs}
+        to_index = raw_docs if req.reingest else [
+            doc for doc in raw_docs if not video_is_indexed(doc.metadata["video_id"])
+        ]
+        if to_index:
+            add_documents_to_store(to_index)
 
         return {
             "status": "success",
             "raw_segments_loaded": len(raw_docs),
-            "chunks_created": len(chunks),
-            "chroma_document_ids": len(ids),
+            "videos_processed": len(video_ids),
+            "message": ("ParentDocumentRetriever refreshed indexed child chunks."
+                        if req.reingest else "Existing lectures were reused; new lectures were indexed."),
         }
     except HTTPException:
         raise
